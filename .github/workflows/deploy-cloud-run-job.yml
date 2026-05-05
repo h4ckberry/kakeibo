@@ -1,0 +1,83 @@
+name: Deploy Cloud Run Job
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GAR_LOCATION: ${{ vars.GAR_LOCATION }}
+  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
+  IMAGE_NAME: ${{ vars.IMAGE_NAME }}
+  CLOUD_RUN_JOB_NAME: ${{ vars.CLOUD_RUN_JOB_NAME }}
+  CLOUD_RUN_REGION: ${{ vars.CLOUD_RUN_REGION }}
+
+jobs:
+  deploy-and-execute:
+    name: Build, deploy, and execute job
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate configuration
+        run: |
+          : "${GCP_PROJECT_ID:?Set repository variable GCP_PROJECT_ID}"
+          : "${GAR_LOCATION:?Set repository variable GAR_LOCATION, for example asia-northeast1}"
+          : "${GAR_REPOSITORY:?Set repository variable GAR_REPOSITORY}"
+          : "${CLOUD_RUN_JOB_NAME:?Set repository variable CLOUD_RUN_JOB_NAME}"
+
+          echo "CLOUD_RUN_REGION=${CLOUD_RUN_REGION:-$GAR_LOCATION}" >> "$GITHUB_ENV"
+          echo "IMAGE_NAME=${IMAGE_NAME:-${GITHUB_REPOSITORY#*/}}" >> "$GITHUB_ENV"
+
+      - name: Validate authentication secrets
+        env:
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: |
+          : "${GCP_WORKLOAD_IDENTITY_PROVIDER:?Set repository secret GCP_WORKLOAD_IDENTITY_PROVIDER}"
+          : "${GCP_SERVICE_ACCOUNT:?Set repository secret GCP_SERVICE_ACCOUNT}"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${GAR_LOCATION}-docker.pkg.dev" --quiet
+
+      - name: Build image
+        run: |
+          IMAGE_URI="${GAR_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_NAME}:${GITHUB_SHA}"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+          docker build --tag "$IMAGE_URI" .
+
+      - name: Push image
+        run: docker push "$IMAGE_URI"
+
+      - name: Update Cloud Run Job image
+        run: |
+          gcloud run jobs update "$CLOUD_RUN_JOB_NAME" \
+            --image "$IMAGE_URI" \
+            --region "$CLOUD_RUN_REGION" \
+            --project "$GCP_PROJECT_ID" \
+            --quiet
+
+      - name: Execute Cloud Run Job
+        run: |
+          gcloud run jobs execute "$CLOUD_RUN_JOB_NAME" \
+            --region "$CLOUD_RUN_REGION" \
+            --project "$GCP_PROJECT_ID" \
+            --quiet \
+            --wait
