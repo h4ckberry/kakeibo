@@ -1,0 +1,30 @@
+{
+  "name": "kakeibo",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "check": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "bun test",
+    "adk:run": "bunx adk run src/agent.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@google/adk-devtools": "^1.1.0",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.58",
+    "@google/adk": "^1.1.0",
+    "ai": "^6.0.174",
+    "google-auth-library": "^10.6.2",
+    "googleapis": "^171.4.0",
+    "zod": "^4.4.2"
+  }
+}

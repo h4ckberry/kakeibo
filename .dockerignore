@@ -1,0 +1,11 @@
+node_modules
+.git
+.env
+.env.*
+*.md
+!prompts/*.md
+test-*.ts
+sample.jpg
+docker-compose.yml
+biome.json
+CLAUDE.json

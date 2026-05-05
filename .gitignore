@@ -141,3 +141,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# GCP Credentials
+gcp-service-account.json
+
+# Local development artifacts
+.cursor/
+sample.jpg
