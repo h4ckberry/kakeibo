@@ -39,7 +39,7 @@ function createParameterManagerClient(
   }
 
   return new ParameterManagerClient({
-    apiEndpoint: `${location}-parametermanager.googleapis.com`,
+    apiEndpoint: `parametermanager.${location}.rep.googleapis.com`,
   });
 }
 
