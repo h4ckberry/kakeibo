@@ -67,3 +67,16 @@ export interface KakeiboBatchResult {
   errors: BatchError[];
   exitCode: 0 | 1;
 }
+
+// User-specific configuration payload loaded from Google Parameter Manager
+export const UserConfigSchema = z
+  .object({
+    id: z.string().min(1),
+    spreadsheetId: z.string().min(1),
+    driveInboxFolderId: z.string().min(1),
+    driveProcessedFolderId: z.string().min(1),
+  })
+  .strict();
+
+export type UserConfig = z.infer<typeof UserConfigSchema>;
+export const UserConfigArraySchema = z.array(UserConfigSchema).min(1);

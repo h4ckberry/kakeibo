@@ -1,6 +1,7 @@
 import { FunctionTool } from '@google/adk';
 import { z } from 'zod';
 import { ENV } from '../../env';
+import { loadUserConfigs } from '../../services/config';
 import { prepareKakeiboContext } from '../../services/context';
 import {
   downloadImageBuffer,
@@ -12,9 +13,25 @@ import {
   groupTransactionsByFiscalYear,
 } from '../../services/receipt';
 import { appendTransactions, getOrCreateSheet } from '../../services/sheets';
-import type { ProcessedReceipt, Transaction } from '../../types';
+import type { ProcessedReceipt, Transaction, UserConfig } from '../../types';
 
 const emptyInputSchema = z.object({});
+
+async function loadAdkUserConfig(): Promise<UserConfig> {
+  const configs = await loadUserConfigs(
+    ENV.USER_CONFIGS_PARAMETER,
+    ENV.USER_CONFIGS_VERSION,
+  );
+  const selected = ENV.ADK_USER_CONFIG_ID
+    ? configs.find((config) => config.id === ENV.ADK_USER_CONFIG_ID)
+    : configs[0];
+
+  if (!selected) {
+    throw new Error('No ADK user config is available');
+  }
+
+  return selected;
+}
 
 export const listReceiptsTool = new FunctionTool({
   name: 'list_receipts',
@@ -22,8 +39,9 @@ export const listReceiptsTool = new FunctionTool({
     'List receipt image files in the configured Google Drive inbox folder.',
   parameters: emptyInputSchema,
   execute: async () => {
+    const config = await loadAdkUserConfig();
     return {
-      receipts: await getReceiptImages(ENV.DRIVE_INBOX_FOLDER_ID),
+      receipts: await getReceiptImages(config.driveInboxFolderId),
     };
   },
 });
@@ -34,13 +52,14 @@ export const prepareContextTool = new FunctionTool({
     'Fetch categories, recent items, and few-shot prompt context for receipt analysis.',
   parameters: emptyInputSchema,
   execute: async () => {
+    const config = await loadAdkUserConfig();
     return prepareKakeiboContext({
-      spreadsheetId: ENV.SPREADSHEET_ID,
+      spreadsheetId: config.spreadsheetId,
       azureOpenAiApiKey: ENV.AZURE_OPENAI_API_KEY,
       azureOpenAiEndpoint: ENV.AZURE_OPENAI_ENDPOINT,
       volcanoAzureModel: ENV.VOLCANO_AZURE_MODEL,
-      driveInboxFolderId: ENV.DRIVE_INBOX_FOLDER_ID,
-      driveProcessedFolderId: ENV.DRIVE_PROCESSED_FOLDER_ID,
+      driveInboxFolderId: config.driveInboxFolderId,
+      driveProcessedFolderId: config.driveProcessedFolderId,
     });
   },
 });
@@ -105,6 +124,7 @@ export const writeTransactionsTool = new FunctionTool({
     ),
   }),
   execute: async ({ receipts }) => {
+    const config = await loadAdkUserConfig();
     const transactionsByFiscalYear = groupTransactionsByFiscalYear(
       receipts as ProcessedReceipt[],
     );
@@ -114,9 +134,12 @@ export const writeTransactionsTool = new FunctionTool({
     for (const [sheetName, transactions] of Object.entries(
       transactionsByFiscalYear,
     )) {
-      await getOrCreateSheet({ spreadsheetId: ENV.SPREADSHEET_ID, sheetName });
+      await getOrCreateSheet({
+        spreadsheetId: config.spreadsheetId,
+        sheetName,
+      });
       await appendTransactions(transactions as Transaction[], {
-        spreadsheetId: ENV.SPREADSHEET_ID,
+        spreadsheetId: config.spreadsheetId,
         sheetName,
       });
       appendedByFy[sheetName] = transactions.length;
@@ -135,11 +158,12 @@ export const moveProcessedReceiptsTool = new FunctionTool({
     fileIds: z.array(z.string().min(1)),
   }),
   execute: async ({ fileIds }) => {
+    const config = await loadAdkUserConfig();
     const moved: string[] = [];
     for (const fileId of fileIds) {
       await moveFileToProcessed(fileId, {
-        inboxFolderId: ENV.DRIVE_INBOX_FOLDER_ID,
-        processedFolderId: ENV.DRIVE_PROCESSED_FOLDER_ID,
+        inboxFolderId: config.driveInboxFolderId,
+        processedFolderId: config.driveProcessedFolderId,
       });
       moved.push(fileId);
     }
